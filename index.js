@@ -67,7 +67,7 @@ function hashController(req, res, reqUrl) {
 
   const hash = crypto.createHash('md5');
   let payloadSize = 0;
-  var timeStart = process.hrtime();
+  const timeStart = process.hrtime();
 
   req.on('data', (chunk) => {
     hash.update(chunk);

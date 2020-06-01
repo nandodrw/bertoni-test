@@ -1,6 +1,8 @@
 const http = require('http');
 const crypto = require('crypto');
 
+/******** CONSTANTS *********/
+
 const ALLOWED_POST_ROUTES = [
   {
     route: 'hashcalc',
@@ -15,7 +17,37 @@ const ALLOWED_GET_REQUESTS = [
   },
 ];
 
+
+/******** DATABASE *******/
+
 const IN_MEMORY_DATABASE = new Map();
+
+
+function storeStats(host, payloadSize, processingTime) {
+  if (IN_MEMORY_DATABASE.has(host)) {
+    let currentStats = IN_MEMORY_DATABASE.get(host)
+
+    IN_MEMORY_DATABASE.set(host, {
+      active: currentStats.active + 1,
+      max_payload: payloadSize > currentStats.max_payload ? payloadSize : currentStats.max_payload,
+      average_payload: ((currentStats.average_payload * currentStats.active) + payloadSize) / (currentStats.active + 1),
+      average_time_per_mb: ((currentStats.average_time_per_mb * currentStats.active) + ((payloadSize / (1024 * 1024)) / processingTime)) / (currentStats.active + 1)
+    });
+
+  } else {
+
+    IN_MEMORY_DATABASE.set(host, {
+      active: 1,
+      max_payload: payloadSize,
+      average_payload: payloadSize,
+      average_time_per_mb: (payloadSize / (1024 * 1024)) / processingTime
+    });
+
+  }
+}
+
+
+/******** CONTROLLERS *******/
 
 /** handle STATS */
 function statsController(req, res, reqUrl) {
@@ -44,27 +76,7 @@ function hashController(req, res, reqUrl) {
 
   req.on('end', () => {
     const processingTime = process.hrtime(timeStart)[1] / 1000000
-
-    if (IN_MEMORY_DATABASE.has(req.headers.host)) {
-      let currentStats = IN_MEMORY_DATABASE.get(req.headers.host)
-
-      IN_MEMORY_DATABASE.set(req.headers.host, {
-        active: currentStats.active + 1,
-        max_payload: payloadSize > currentStats.max_payload ? payloadSize : currentStats.max_payload,
-        average_payload: ((currentStats.average_payload * currentStats.active) + payloadSize) / (currentStats.active + 1),
-        average_time_per_mb: ((currentStats.average_time_per_mb * currentStats.active) + ((payloadSize / (1024 * 1024)) / processingTime)) / (currentStats.active + 1)
-      });
-
-    } else {
-
-      IN_MEMORY_DATABASE.set(req.headers.host, {
-        active: 1,
-        max_payload: payloadSize,
-        average_payload: payloadSize,
-        average_time_per_mb: (payloadSize / (1024 * 1024)) / processingTime
-      });
-
-    }
+    storeStats(req.headers.host, payloadSize, processingTime)
 
     res.writeHead(200);
     res.write(JSON.stringify({
@@ -84,6 +96,9 @@ function notFound(req, res) {
   res.write('Not found');
   res.end();
 }
+
+
+/******** BOILERPLATE AND SERVER INITIALIZATION *******/
 
 http.createServer((req, res) => {
 
